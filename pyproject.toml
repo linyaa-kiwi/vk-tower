@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "vk-tower"
+version = "0.1.0"
+description = "Tools for Vulkan registry, xml, profiles"
+authors = ["Lina Versace <lina@kiwitree.net>"]
+license = "MIT"
+readme = "README.md"
+keywords = ["vulkan"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+click = "^8.1.7"
+json5 = "^0.9.28"
+xdg-base-dirs = "^6.0.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
