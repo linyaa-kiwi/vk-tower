@@ -3,6 +3,7 @@
 
 import json
 import os
+from pathlib import Path
 import sys
 
 import json5
@@ -26,3 +27,34 @@ def json_pp(obj, file=sys.stdout, /, *, format="json"):
 
     dump(obj, file, indent=4, default=_json_default)
     file.write("\n")
+
+def parse_env_bool(name: str, default: bool) -> bool:
+    env = os.environ.get(name, "").lower()
+    match env:
+        case "true" | "1":
+            return True
+        case "false" | "0":
+            return False
+        case _:
+            return default
+
+def parse_xdg_env_path_list(name: str) -> [Path]:
+    """Parse the environment variable `name` as a list of paths, following the
+    parsing rules in the XDG Base Directory specification.
+
+    Relative paths and empty paths are ignored. If the environment variable is
+    unset, return the empty list.
+    """
+    paths = []
+
+    for path_str in os.environ.get(name, "").split(os.pathsep):
+        if path_str == "":
+            continue
+
+        path = Path(path_str)
+        if not path.is_absolute():
+            continue
+
+        paths.append(path)
+
+    return paths
