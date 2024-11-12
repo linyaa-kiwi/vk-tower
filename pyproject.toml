@@ -10,12 +10,18 @@ classifiers = [
     # Project is not yet ready for PyPi.
     "Private :: Do Not Upload",
 ]
+packages = [
+    { include = "vk_tower", from = "lib" },
+]
 
 [tool.poetry.dependencies]
 python = "^3.11"
 click = "^8.1.7"
 json5 = "^0.9.28"
 xdg-base-dirs = "^6.0.2"
+
+[tool.poetry.scripts]
+vk-tower = "vk_tower.cli:main"
 
 [build-system]
 requires = ["poetry-core"]
