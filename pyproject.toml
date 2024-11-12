@@ -6,6 +6,10 @@ authors = ["Lina Versace <lina@kiwitree.net>"]
 license = "MIT"
 readme = "README.md"
 keywords = ["vulkan"]
+classifiers = [
+    # Project is not yet ready for PyPi.
+    "Private :: Do Not Upload",
+]
 
 [tool.poetry.dependencies]
 python = "^3.11"
