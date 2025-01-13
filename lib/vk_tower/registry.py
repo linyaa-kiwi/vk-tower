@@ -1,7 +1,7 @@
 # Copyright 2025 Google
 # SPDX-License-Identifier: MIT
 
-from dataclasses import dataclass
+from dataclasses import dataclass, KW_ONLY
 import enum
 import os
 from os import PathLike
@@ -9,6 +9,12 @@ from pathlib import Path
 from typing import Iterator
 
 from .config import Config
+from .util import json_load_path
+
+class ProfileRedefinitionError(RuntimeError):
+
+    orig_profile: "Profile"
+    bad_reg_file: "RegistryFile"
 
 class RegistryFiletype(enum.IntEnum):
     # IntEnum provides a total order.
@@ -66,7 +72,15 @@ class RegistryFile:
 class Registry:
 
     config: Config
+
     __files: dict[RegistryFiletype, dict[str, RegistryFile]]
+    """Middle key is `RegistryFile.name`."""
+
+    __loaded_profile_files: set[str]
+    """Keys are `RegistryFile.name`."""
+
+    __profiles: dict[str, "Profile"]
+    """Key is `Profile.name`."""
 
     def __init__(self, config: Config):
         self.config = config
@@ -86,6 +100,9 @@ class Registry:
         self.__collect_vkxml_files()
         self.__collect_profile_files()
         self.__collect_profile_schema_files()
+
+        self.__profiles = {}
+        self.__loaded_profile_files = set()
 
     def __add_file(self, type: RegistryFiletype, path: PathLike) -> None:
         path = Path(path)
@@ -134,3 +151,62 @@ class Registry:
             for abs_path in reg_root.glob(glob):
                 if abs_path.is_file():
                     yield abs_path
+
+    def __load_profile_file(self, reg_file: RegistryFile) -> Iterator["Profile"]:
+        """Yield any newly loaded profiles."""
+
+        if reg_file.name in self.__loaded_profile_files:
+            return
+
+        self.__loaded_profile_files.add(reg_file.name)
+        data = json_load_path(reg_file.path)
+
+        # Check if the file redefines any profile previously defined in the
+        # registry. To improve data consistency under exceptions, do the check
+        # before loading new profiles.
+        for profile_name in data["profiles"].keys():
+            profile = self.__profiles.get(profile_name)
+            if profile is not None:
+                raise ProfileRedefinitionError(
+                        orig_profile = profile,
+                        bad_reg_file = reg_file)
+
+        # Create new profiles.
+        for profile_name in data["profiles"].keys():
+            profile = Profile(name=profile_name,
+                              data=data,
+                              reg_file=reg_file)
+            self.__profiles[profile_name] = profile
+
+            # Reduce latency by yielding each profile as it is loaded.
+            yield profile
+
+    def __load_profiles(self) -> Iterator["Profile"]:
+        """Yield any newly loaded profiles."""
+        for reg_file in self.iter_profile_files():
+            for profile in self.__load_profile_file(reg_file):
+                # Reduce latency by yielding each profile as it is loaded.
+                yield profile
+
+    def iter_profiles(self) -> Iterator["Profile"]:
+        # Reduce latency by first yielding previously loaded profiles.
+        for x in self.__profiles.values():
+            yield x
+
+        # Reduce latency by yielding each profile as it is loaded.
+        for x in self.__load_profiles():
+            yield x
+
+@dataclass
+class Profile:
+
+    _: KW_ONLY
+    name: str
+
+    data: dict
+    """
+    The data that is usually contained in a profile file and conforms to
+    a profile schema.
+    """
+
+    reg_file: RegistryFile | None
