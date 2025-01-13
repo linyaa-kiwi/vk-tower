@@ -1,13 +1,25 @@
 # Copyright 2025 Google
 # SPDX-License-Identifier: MIT
 
+from dataclasses import dataclass
 import json
 import os
-from os import PathLike
+from os import fspath, PathLike
 from pathlib import Path
 import sys
 
 import json5
+
+@dataclass
+class JsonFileError(RuntimeError):
+
+    path: PathLike
+    orig_error: Exception
+
+    def __str__(self):
+        path = os.fspath(self.path)
+        return f"failed to load json file: {path!r}"
+
 
 def _json_default(x):
     if isinstance(x, os.PathLike):
@@ -44,7 +56,10 @@ def json_load_path(path: PathLike):
             load = json.load
 
     with path.open("r") as f:
-        return load(f)
+        try:
+            return load(f)
+        except Exception as e:
+            raise JsonFileError(orig_error=e, path=path)
 
 def parse_env_bool(name: str, default: bool) -> bool:
     env = os.environ.get(name, "").lower()
