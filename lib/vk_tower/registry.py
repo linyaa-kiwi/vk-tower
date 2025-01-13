@@ -3,6 +3,7 @@
 
 from dataclasses import dataclass, KW_ONLY
 import enum
+from itertools import chain
 import os
 from os import PathLike
 from pathlib import Path
@@ -115,12 +116,14 @@ class Registry:
 
     def __collect_profile_files(self) -> None:
         # Descend into subdirs.
-        for path in self.__iter_glob_files("profiles/**/*.json"):
+        for path in chain(self.__iter_glob_files("profiles/**/*.json"),
+                          self.__iter_glob_files("profiles/**/*.json5")):
             self.__add_file(RegistryFiletype.profile, path)
 
     def __collect_profile_schema_files(self) -> None:
         # Do not descend into subdirs.
-        for path in self.__iter_glob_files("schema/profiles-*.json"):
+        for path in chain(self.__iter_glob_files("schema/profiles-*.json"),
+                          self.__iter_glob_files("schema/profiles-*.json5")):
             self.__add_file(RegistryFiletype.profile_schema, path)
 
     def iter_files(self) -> Iterator[RegistryFile]:
