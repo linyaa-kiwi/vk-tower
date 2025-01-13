@@ -3,6 +3,7 @@
 
 import json
 import os
+from os import PathLike
 from pathlib import Path
 import sys
 
@@ -27,6 +28,23 @@ def json_pp(obj, file=sys.stdout, /, *, format="json"):
 
     dump(obj, file, indent=4, default=_json_default)
     file.write("\n")
+
+def json_load_path(path: PathLike):
+    """Load a json file. Autodetct the json dialect."""
+
+    path = Path(path)
+
+    match path.suffix:
+        case "json":
+            load = json.load
+        case "json5":
+            load = json5.load
+        case _:
+            # Assume regular json
+            load = json.load
+
+    with path.open("r") as f:
+        return load(f)
 
 def parse_env_bool(name: str, default: bool) -> bool:
     env = os.environ.get(name, "").lower()

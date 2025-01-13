@@ -92,28 +92,19 @@ class Registry:
         reg_file = RegistryFile.from_path(type, path)
         self.__files[type].setdefault(reg_file.name, reg_file)
 
-    def add_vkxml_file(self, path: PathLike, /) -> None:
-        self.__add_file(RegistryFiletype.vkxml, path)
-
-    def add_profile_file(self, path: PathLike, /) -> None:
-        self.__add_file(RegistryFiletype.profile, path)
-
-    def add_profile_schema_file(self, path: PathLike, /) -> None:
-        self.__add_file(RegistryFiletype.profile_schema, path)
-
     def __collect_vkxml_files(self) -> None:
         for path in self.__iter_glob_files("vk.xml"):
-            self.add_vkxml_file(path)
+            self.__add_file(RegistryFiletype.vkxml, path)
 
     def __collect_profile_files(self) -> None:
         # Descend into subdirs.
         for path in self.__iter_glob_files("profiles/**/*.json"):
-            self.add_profile_file(path)
+            self.__add_file(RegistryFiletype.profile, path)
 
     def __collect_profile_schema_files(self) -> None:
         # Do not descend into subdirs.
         for path in self.__iter_glob_files("schema/profiles-*.json"):
-            self.add_profile_schema_file(path)
+            self.__add_file(RegistryFiletype.profile_schema, path)
 
     def iter_files(self) -> Iterator[RegistryFile]:
         for type in RegistryFiletype:
