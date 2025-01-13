@@ -35,9 +35,9 @@ def json_load_path(path: PathLike):
     path = Path(path)
 
     match path.suffix:
-        case "json":
+        case ".json":
             load = json.load
-        case "json5":
+        case ".json5":
             load = json5.load
         case _:
             # Assume regular json
