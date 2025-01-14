@@ -17,6 +17,24 @@ from .util import (
 )
 
 class Config:
+    """
+    Config Settings.
+
+    Environment Variables:
+        - VK_TOWER_REGISTRY_PATH
+        - VK_TOWER_REGISTRY_EXTRA_FILES
+        - VK_TOWER_REGISTRY_IGNORE_XDG_PATHS
+        - XDG_DATA_DIRS
+        - XDG_DATA_HOME
+    """
+
+    xdg_data_dirs: [Path]
+    xdg_data_home: Path
+    registry_ignore_xdg_paths: bool
+    registry_system_paths: [Path]
+    registry_user_path: Path | None
+    registry_extra_paths: [Path]
+    registry_extra_files: [Path]
 
     def __init__(self):
         self.xdg_data_dirs = xdg_data_dirs()
