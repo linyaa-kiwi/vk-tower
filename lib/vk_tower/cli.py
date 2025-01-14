@@ -10,7 +10,12 @@ from .config import Config
 from .registry import Registry
 from .util import json_pp
 
-@click.group("vk-tower")
+@click.group(
+    name = "vk-tower",
+    context_settings = {
+        "help_option_names": ["-h", "--help"],
+    },
+)
 def cmd_main():
     pass
 
