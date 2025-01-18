@@ -20,8 +20,8 @@ class ProfileRedefinitionError(RuntimeError):
 class RegistryFiletype(enum.IntEnum):
     # IntEnum provides a total order.
     vkxml = enum.auto()
-    profile = enum.auto()
-    profile_schema = enum.auto()
+    profiles = enum.auto()
+    profiles_schema = enum.auto()
 
     def to_porcelain_json(self):
         return self._name_
@@ -53,8 +53,8 @@ class RegistryFile:
                 if path.suffix != ".xml":
                     raise ValueError(f"registry file has invalid suffix: {path!r}")
                 name = path.name
-            case (RegistryFiletype.profile |
-                  RegistryFiletype.profile_schema):
+            case (RegistryFiletype.profiles |
+                  RegistryFiletype.profiles_schema):
                 if path.suffix not in (".json", ".json5"):
                     raise ValueError(f"registry file has invalid suffix: {path!r}")
                 name = path.stem
@@ -77,7 +77,7 @@ class Registry:
     __files: dict[RegistryFiletype, dict[str, RegistryFile]]
     """Middle key is `RegistryFile.name`."""
 
-    __loaded_profile_files: set[str]
+    __loaded_profiles_files: set[str]
     """Keys are `RegistryFile.name`."""
 
     __profiles: dict[str, "Profile"]
@@ -89,8 +89,8 @@ class Registry:
 
         self.__files = {
             RegistryFiletype.vkxml: {},
-            RegistryFiletype.profile: {},
-            RegistryFiletype.profile_schema: {},
+            RegistryFiletype.profiles: {},
+            RegistryFiletype.profiles_schema: {},
         }
 
         # To ensure that register queries have consistent results over the
@@ -99,11 +99,11 @@ class Registry:
         #
         # TODO: Lazily collect files.
         self.__collect_vkxml_files()
-        self.__collect_profile_files()
-        self.__collect_profile_schema_files()
+        self.__collect_profiles_files()
+        self.__collect_profiles_schema_files()
 
         self.__profiles = {}
-        self.__loaded_profile_files = set()
+        self.__loaded_profiles_files = set()
 
     def __add_file(self, type: RegistryFiletype, path: PathLike) -> None:
         path = Path(path)
@@ -114,17 +114,17 @@ class Registry:
         for path in self.__iter_glob_files("vk.xml"):
             self.__add_file(RegistryFiletype.vkxml, path)
 
-    def __collect_profile_files(self) -> None:
+    def __collect_profiles_files(self) -> None:
         # Descend into subdirs.
         for path in chain(self.__iter_glob_files("profiles/**/*.json"),
                           self.__iter_glob_files("profiles/**/*.json5")):
-            self.__add_file(RegistryFiletype.profile, path)
+            self.__add_file(RegistryFiletype.profiles, path)
 
-    def __collect_profile_schema_files(self) -> None:
+    def __collect_profiles_schema_files(self) -> None:
         # Do not descend into subdirs.
         for path in chain(self.__iter_glob_files("schema/profiles-*.json"),
                           self.__iter_glob_files("schema/profiles-*.json5")):
-            self.__add_file(RegistryFiletype.profile_schema, path)
+            self.__add_file(RegistryFiletype.profiles_schema, path)
 
     def iter_files(self) -> Iterator[RegistryFile]:
         for type in RegistryFiletype:
@@ -135,12 +135,12 @@ class Registry:
         for x in self.__files[RegistryFiletype.vkxml].values():
             yield x
 
-    def iter_profile_files(self) -> Iterator[RegistryFile]:
-        for x in self.__files[RegistryFiletype.profile].values():
+    def iter_profiles_files(self) -> Iterator[RegistryFile]:
+        for x in self.__files[RegistryFiletype.profiles].values():
             yield x
 
-    def iter_profile_schema_files(self) -> Iterator[RegistryFile]:
-        for x in self.__files[RegistryFiletype.profile_schema].values():
+    def iter_profiles_schema_files(self) -> Iterator[RegistryFile]:
+        for x in self.__files[RegistryFiletype.profiles_schema].values():
             yield x
 
     def __iter_glob_files(self, glob: str) -> Iterator[Path]:
@@ -155,13 +155,13 @@ class Registry:
                 if abs_path.is_file():
                     yield abs_path
 
-    def __load_profile_file(self, reg_file: RegistryFile) -> Iterator["Profile"]:
+    def __load_profiles_file(self, reg_file: RegistryFile) -> Iterator["Profile"]:
         """Yield any newly loaded profiles."""
 
-        if reg_file.name in self.__loaded_profile_files:
+        if reg_file.name in self.__loaded_profiles_files:
             return
 
-        self.__loaded_profile_files.add(reg_file.name)
+        self.__loaded_profiles_files.add(reg_file.name)
         data = json_load_path(reg_file.path)
 
         # Check if the file redefines any profile previously defined in the
@@ -186,8 +186,8 @@ class Registry:
 
     def __load_profiles(self) -> Iterator["Profile"]:
         """Yield any newly loaded profiles."""
-        for reg_file in self.iter_profile_files():
-            for profile in self.__load_profile_file(reg_file):
+        for reg_file in self.iter_profiles_files():
+            for profile in self.__load_profiles_file(reg_file):
                 # Reduce latency by yielding each profile as it is loaded.
                 yield profile
 
