@@ -112,7 +112,7 @@ class Registry:
         self.__files[type].setdefault(reg_file.name, reg_file)
 
     def __collect_vkxml_files(self) -> None:
-        for path in self.__iter_glob_files("vk.xml"):
+        for path in self.__iter_glob_files("*.xml"):
             self.__add_file(RegistryFiletype.vkxml, path)
 
     def __collect_profiles_files(self) -> None:
