@@ -95,3 +95,24 @@ def parse_xdg_env_path_list(name: str) -> [Path]:
 def eprint(*args, **kwargs):
     file = kwargs.pop("file", sys.stderr)
     print(*args, file=file, **kwargs)
+
+def dig(obj, *keys, default=None):
+    """
+    Dig into object.
+
+    Iteratively dig into object by calling `__getitem__(key)`.
+    If any step returns None, or if any key is not found, then return `default`.
+
+    Like Ruby's `dig` method.
+    """
+
+    for k in keys:
+        if obj is None:
+            return None
+
+        try:
+            obj = obj[k]
+        except LookupError:
+            return default
+
+    return obj
