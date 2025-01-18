@@ -28,7 +28,7 @@ def _json_default(x):
         # Mimic the error message of `json.dump`.
         raise TypeError(f"Object of type {type(x)} is not JSON serializable")
 
-def json_pp(obj, file=sys.stdout, /, *, format="json"):
+def json_pp(obj, /, *, file=sys.stdout, format="json"):
     """Pretty-print JSON."""
     match format:
         case "json":
