@@ -26,7 +26,7 @@ def cmd_main():
 @click.option("-F", "--format",
     type = click.Choice(["json", "json5"]),
     default = "json",
-    help = "Choose output format. Default is 'json'.",
+    help = "Choose output format. Default is `json`.",
 )
 def cmd_config(format):
     """Print the config settings as JSON.
@@ -47,17 +47,20 @@ def cmd_config(format):
         highest-priority instance is listed.
         """,
 )
-@click.option("-P", "--paths", "want_paths",
-    flag_value = True,
-    help = "Print filepaths if `--format=lines`. No change if `--format=json`.",
-)
 @click.option("-F", "--format",
-    type = click.Choice(["lines", "lines0", "json", "json5"]),
-    default = "lines",
-    help = """Choose the output format. `lines` prints one item per line.
-        `lines0` is the same, but the lines are null-terminated.""",
+    default = "name",
+    type = click.Choice(["json", "json5", "name", "abspath"]),
+    help = """
+        Choose output format. Default is `name`.
+        Format `name` writes the name of the file, one per line.
+        For consistency, for "profiles files" and "profiles schemas", the
+        file suffix is stripped from the name.
+        For example, `VP_foo.json` and `VP_foo.json5` both have
+        the same name, `VP_foo`.
+        Format `abspath` writes the absolute path to the file, one per line.
+    """,
 )
-def cmd_ls_registry_files(format, want_paths):
+def cmd_ls_registry_files(format):
     out = sys.stdout
     config = Config()
     reg = Registry(config)
@@ -67,13 +70,16 @@ def cmd_ls_registry_files(format, want_paths):
     ]
 
     match format:
-        case "lines" | "lines0":
-            sep = get_format_separator(format)
+        case "name":
+            ors = "\n"
             for f in reg_files:
-                out.write(f"{f['type']}/{f['name']}")
-                if want_paths:
-                    out.write(f":{f['path']}")
-                out.write(sep)
+                name = f["name"]
+                out.write(f"{name}{ors}")
+        case "abspath":
+            ors = "\n"
+            for f in reg_files:
+                path = f["path"]
+                out.write(f"{path}{ors}")
         case "json" | "json5":
             json_pp(reg_files, format=format)
         case _:
@@ -83,38 +89,35 @@ def cmd_ls_registry_files(format, want_paths):
     name = "ls-profiles",
     short_help = "List all profile names.",
 )
-@click.option("-O", "--show-origin",
-    flag_value = True,
-    help = """
-        Print the profile's origin (usually a filepath) if `--format=lines`. No
-        change if `--format=json`.
-        """,
-)
 @click.option("-F", "--format",
-    type = click.Choice(["lines", "lines0", "json", "json5"]),
-    default = "lines",
-    help = """Choose the output format. `lines` prints one item per line.
-        `lines0` is the same, but the lines are null-terminated.""",
+    default = "name",
+    type = click.Choice(["json", "json5", "name", "name-origin"]),
+    help = """
+        Choose output format. Default is `name`.
+        Format `name` writes the name of each profile, one per line.
+        Format `name-origin` is similar; it also writes the profile's origin as
+        an absolute path.
+    """,
 )
-def cmd_ls_profiles(format, show_origin):
+def cmd_ls_profiles(format):
     out = sys.stdout
     config = Config()
     reg = Registry(config)
 
     match format:
-        case "lines" | "lines0":
-            line_sep = get_format_separator(format)
-
+        case "name":
+            ors = "\n"
             for profile in reg.iter_profiles():
-                out.write(profile.name)
-
-                if show_origin:
-                    # Currently all profiles are loaded from files.
-                    assert profile.reg_file is not None
-                    out.write(":")
-                    out.write(os.fspath(profile.reg_file.path))
-
-                out.write(line_sep)
+                out.write(f"{profile.name}{ors}")
+        case "name-origin" | "name-origin0":
+            ofs = ":"
+            ors = "\n"
+            for profile in reg.iter_profiles():
+                # Currently all profiles are loaded from files.
+                assert profile.reg_file is not None
+                origin = os.fspath(profile.reg_file.path)
+                name = profile.name
+                out.write(f"{name}{ofs}{origin}{ors}")
 
         case "json" | "json5":
             profiles = []
@@ -134,15 +137,6 @@ def cmd_ls_profiles(format, show_origin):
 
         case _:
             assert False
-
-def get_format_separator(format: str) -> str:
-    match format:
-        case "lines":
-            return "\n"
-        case "lines0":
-            return "\0"
-        case _:
-            raise ValueError(f"invalid format: {format!r}")
 
 def main():
     cmd_main()
