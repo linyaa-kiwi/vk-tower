@@ -8,7 +8,7 @@ import click
 
 from .config import Config
 from .registry import Registry
-from .util import json_pp
+from .util import eprint, json_pp
 
 @click.group(
     name = "vk-tower",
@@ -137,6 +137,63 @@ def cmd_ls_profiles(format):
 
         case _:
             assert False
+
+@cmd_main.command(
+    name = "print-profile",
+    short_help = "Print a profile",
+    help = """
+        Print a profile.
+
+        If no transformation is given, then print the full json object inside
+        the profiles file that defines the requested profile. For example, if
+        profile `VP_KHR_roadmap_2024` is requested, then print the full json
+        object contained in `VP_KHR_roadmap.json`, which contains other profiles
+        too.
+
+        Transformations are applied in the order they are documented, not the
+        order given on the cmdline.
+
+        \b
+        Transformations
+            no-optionals
+                For each profile object in the profiles file,
+                remove the "optionals" member.
+            trim:
+                Collect the names of all profiles and capability sets that the
+                profile recursively references, local to this file.  Then delete
+                all other profiles and capability sets.
+    """,
+)
+@click.argument("name", required = True)
+@click.option("-F", "--format",
+    type = click.Choice(["json", "json5"]),
+    default = "json",
+    help = "Choose the output format. Default is `json`.",
+)
+@click.option("-X", "--transform", "transforms",
+    type = click.Choice(["no-optionals", "trim"]),
+    multiple = True,
+    help = """
+        Apply transformation to the profiles file.
+        Option can be given multiple times.
+    """,
+)
+def cmd_print_profile(name, format, transforms):
+    out = sys.stdout
+    config = Config()
+    reg = Registry(config)
+
+    profile = reg.get_profile(name)
+    if profile is None:
+        eprint(f"profile not found: {name!r}")
+        sys.exit(1)
+
+    if "no-optionals" in transforms:
+        profile.file.remove_optionals()
+    if "trim" in transforms:
+        profile.file.trim_to_profile(profile.name)
+
+    json_pp(profile.file.data, format=format)
 
 def main():
     cmd_main()
