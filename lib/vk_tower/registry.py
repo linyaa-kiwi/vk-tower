@@ -122,8 +122,8 @@ class Registry:
 
     def __collect_profiles_schema_files(self) -> None:
         # Do not descend into subdirs.
-        for path in chain(self.__iter_glob_files("schema/profiles-*.json"),
-                          self.__iter_glob_files("schema/profiles-*.json5")):
+        for path in chain(self.__iter_glob_files("schemas/profiles-*.json"),
+                          self.__iter_glob_files("schemas/profiles-*.json5")):
             self.__add_file(RegistryFiletype.profiles_schema, path)
 
     def iter_files(self) -> Iterator[RegistryFile]:
