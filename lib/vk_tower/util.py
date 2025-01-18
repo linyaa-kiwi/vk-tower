@@ -91,3 +91,7 @@ def parse_xdg_env_path_list(name: str) -> [Path]:
         paths.append(path)
 
     return paths
+
+def eprint(*args, **kwargs):
+    file = kwargs.pop("file", sys.stderr)
+    print(*args, file=file, **kwargs)
