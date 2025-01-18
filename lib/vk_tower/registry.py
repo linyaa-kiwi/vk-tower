@@ -7,6 +7,7 @@ from itertools import chain
 import os
 from os import PathLike
 from pathlib import Path
+import re
 from typing import Iterator
 
 from .config import Config
@@ -118,7 +119,8 @@ class Registry:
         # Descend into subdirs.
         for path in chain(self.__iter_glob_files("profiles/**/*.json"),
                           self.__iter_glob_files("profiles/**/*.json5")):
-            self.__add_file(RegistryFiletype.profiles, path)
+            if re.match(r"^(?:VP|vp)_.+\.(?:json|json5)$", path.name):
+                self.__add_file(RegistryFiletype.profiles, path)
 
     def __collect_profiles_schema_files(self) -> None:
         # Do not descend into subdirs.
