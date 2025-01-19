@@ -71,6 +71,44 @@ class RegistryFile:
             "path": os.fspath(self.path),
         }
 
+class ProfilesFile:
+    """The data contained in a profiles file, such as `VP_KHR_roadmap.json`."""
+
+    __data: dict | None
+    reg_file: RegistryFile
+
+    @staticmethod
+    def from_path(path: PathLike) -> "ProfilesFile":
+        type = RegistryFiletype.profiles
+        reg_file = RegistryFile.from_path(type, path)
+        return ProfilesFile(reg_file)
+
+    def __init__(self, reg_file: RegistryFile):
+        self.reg_file = reg_file
+        self.__data = None
+
+    @property
+    def data(self) -> dict:
+        if self.__data is None:
+            self.__data = json_load_path(self.reg_file.path)
+
+            if not isinstance(self.__data, dict):
+                path = os.fspath(self.reg_file.path)
+                raise ProfileValidationError(f"profiles file does not contain "
+                                             f"a json dict: {path!r}")
+
+        return self.__data
+
+    def get_profile_obj(self, name: str, /) -> dict | None:
+        return dig(self.data, "profiles", name)
+
+    def iter_profile_names(self) -> Iterator[str]:
+        table = self.data.get("profiles")
+        if table is None:
+            return
+        for name in table:
+            yield name
+
 class Registry:
 
     config: Config
@@ -78,7 +116,7 @@ class Registry:
     __vkxml_files: dict[str, RegistryFile]
     """Key is `RegistryFile.name`."""
 
-    __profiles_files: dict[str, RegistryFile]
+    __profiles_files: dict[str, ProfilesFile]
     """Key is `RegistryFile.name`."""
 
     __profiles_schema_files: dict[str, RegistryFile]
@@ -125,9 +163,8 @@ class Registry:
                           self.__iter_glob_files("profiles/**/*.json5")):
             if not re.match(r"^(?:VP|vp)_.+\.(?:json|json5)$", path.name):
                 continue
-            type = RegistryFiletype.profiles
-            reg_file = RegistryFile.from_path(type, path)
-            self.__profiles_files.setdefault(reg_file.name, reg_file)
+            file = ProfilesFile.from_path(path)
+            self.__profiles_files.setdefault(file.reg_file.name, file)
 
     def __collect_profiles_schema_files(self) -> None:
         # Do not descend into subdirs.
@@ -155,22 +192,21 @@ class Registry:
                 if abs_path.is_file():
                     yield abs_path
 
-    def __load_profiles_file(self, reg_file: RegistryFile) -> Iterator["Profile"]:
+    def __load_profiles_file(self, file: ProfilesFile) -> Iterator["Profile"]:
         """
         Fully load a profiles file and yield its profiles.
 
         Skip if a profiles file with the same name has already been loaded.
         """
 
-        if reg_file.name in self.__loaded_profiles_files:
+        if file.reg_file.name in self.__loaded_profiles_files:
             return
 
-        data = json_load_path(reg_file.path)
-        profile_names = data["profiles"].keys()
+        profile_names = list(file.iter_profile_names())
 
         # Check if the file redefines any profile previously defined in the
         # registry. To improve data consistency under exceptions, do the check
-        # before loading new profiles.
+        # before registering new profiles.
         for name in profile_names:
             profile = self.__profiles.get(name)
             if profile is not None:
@@ -179,11 +215,11 @@ class Registry:
                         bad_reg_file = reg_file)
 
         profiles = {
-            name: Profile(name=name, data=data, reg_file=reg_file)
+            name: Profile(name=name, file=file)
             for name in profile_names
         }
 
-        self.__loaded_profiles_files.add(reg_file.name)
+        self.__loaded_profiles_files.add(file.reg_file.name)
         self.__profiles.update(profiles)
 
         # Do not yield any new profiles until all of them have been added to the
@@ -200,8 +236,8 @@ class Registry:
         Yield each profile as it is loaded.  Previously loaded profiles are
         skipped.
         """
-        for reg_file in self.__profiles_files.values():
-            for profile in self.__load_profiles_file(reg_file):
+        for file in self.__profiles_files.values():
+            for profile in self.__load_profiles_file(file):
                 # Reduce latency by yielding each profile as it is loaded.
                 yield profile
 
@@ -230,11 +266,4 @@ class Profile:
 
     _: KW_ONLY
     name: str
-
-    data: dict
-    """
-    The data that is usually contained in a profile file and conforms to
-    a profile schema.
-    """
-
-    reg_file: RegistryFile | None
+    file: ProfilesFile
