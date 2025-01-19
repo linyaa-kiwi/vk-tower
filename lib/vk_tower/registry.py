@@ -195,8 +195,13 @@ class Registry:
         for x in profiles.values():
             yield x
 
-    def __load_profiles(self) -> Iterator["Profile"]:
-        """Yield any newly loaded profiles."""
+    def __lazy_load_profiles(self) -> Iterator["Profile"]:
+        """
+        Lazily load more profiles.
+
+        Yield each profile as it is loaded.  Previously loaded profiles are
+        skipped.
+        """
         for reg_file in self.iter_profiles_files():
             for profile in self.__load_profiles_file(reg_file):
                 # Reduce latency by yielding each profile as it is loaded.
@@ -208,7 +213,7 @@ class Registry:
             yield x
 
         # Reduce latency by yielding each profile as it is loaded.
-        for x in self.__load_profiles():
+        for x in self.__lazy_load_profiles():
             yield x
 
     def get_profile(self, name: str, /) -> Optional["Profile"]:
@@ -216,7 +221,7 @@ class Registry:
         if p is not None:
             return p
 
-        for p in self.__load_profiles():
+        for p in self.__lazy_load_profiles():
             if p.name == name:
                 return p
 
