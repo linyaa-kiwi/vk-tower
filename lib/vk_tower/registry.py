@@ -158,33 +158,42 @@ class Registry:
                     yield abs_path
 
     def __load_profiles_file(self, reg_file: RegistryFile) -> Iterator["Profile"]:
-        """Yield any newly loaded profiles."""
+        """
+        Fully load a profiles file and yield its profiles.
+
+        Skip if a profiles file with the same name has already been loaded.
+        """
 
         if reg_file.name in self.__loaded_profiles_files:
             return
 
-        self.__loaded_profiles_files.add(reg_file.name)
         data = json_load_path(reg_file.path)
+        profile_names = data["profiles"]keys()
 
         # Check if the file redefines any profile previously defined in the
         # registry. To improve data consistency under exceptions, do the check
         # before loading new profiles.
-        for profile_name in data["profiles"].keys():
-            profile = self.__profiles.get(profile_name)
+        for name in profile_names:
+            profile = self.__profiles.get(name)
             if profile is not None:
                 raise ProfileRedefinitionError(
                         orig_profile = profile,
                         bad_reg_file = reg_file)
 
-        # Create new profiles.
-        for profile_name in data["profiles"].keys():
-            profile = Profile(name=profile_name,
-                              data=data,
-                              reg_file=reg_file)
-            self.__profiles[profile_name] = profile
+        profiles = {
+            name: Profile(name=name, data=data, reg_file=reg_file)
+            for name in profile_names
+        }
 
-            # Reduce latency by yielding each profile as it is loaded.
-            yield profile
+        self.__loaded_profiles_files.add(reg_file.name)
+        self.__profiles.update(profiles)
+
+        # Do not yield any new profiles until all of them have been added to the
+        # registry. Otherwise, the caller may stop the iterator before it
+        # completes, which causes the file to be marked as loaded before all of
+        # its profiles have been loaded.
+        for x in profiles.values():
+            yield x
 
     def __load_profiles(self) -> Iterator["Profile"]:
         """Yield any newly loaded profiles."""
