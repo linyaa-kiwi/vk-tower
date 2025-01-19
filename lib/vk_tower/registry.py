@@ -13,6 +13,17 @@ from typing import Iterator, Optional
 from .config import Config
 from .util import dig, json_load_path
 
+class ProfileNotFoundError(RuntimeError):
+
+    profile: str
+
+    def __init__(self, profile: str):
+        self.profile = profile
+
+    def __str__(self):
+        return f"profile not found: {self.profile!r}"
+
+
 class ProfileRedefinitionError(RuntimeError):
 
     orig_profile: "Profile"
@@ -99,8 +110,16 @@ class ProfilesFile:
 
         return self.__data
 
-    def get_profile_obj(self, name: str, /) -> dict | None:
-        return dig(self.data, "profiles", name)
+    def get_profile_obj(self, name: str, /, *,
+                        missing_ok=False) -> dict | None:
+        p = dig(self.data, "profiles", name)
+        if p is not None:
+            return p
+
+        if missing_ok:
+            return None
+
+        raise ProfileNotFoundError(name)
 
     def iter_profile_names(self) -> Iterator[str]:
         table = self.data.get("profiles")
@@ -140,7 +159,7 @@ class ProfilesFile:
                 assert profile_name not in visited
                 visited.add(profile_name)
 
-                profile_obj = self.get_profile_obj(profile_name)
+                profile_obj = self.get_profile_obj(profile_name, missing_ok=True)
                 if profile_obj is None:
                     deps.external_profile_names.add(profile_name)
                     continue
@@ -342,7 +361,8 @@ class Registry:
         for x in self.__lazy_load_profiles():
             yield x
 
-    def get_profile(self, name: str, /) -> Optional["Profile"]:
+    def get_profile(self, name: str, /, *,
+                    missing_ok=False) -> Optional["Profile"]:
         p = self.__profiles.get(name)
         if p is not None:
             return p
@@ -351,7 +371,10 @@ class Registry:
             if p.name == name:
                 return p
 
-        return None
+        if missing_ok:
+            return None
+
+        raise ProfileNotFoundError(name)
 
 @dataclass
 class ProfileInternalDeps:

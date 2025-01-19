@@ -183,7 +183,7 @@ def cmd_print_profile(name, format, transforms):
     config = Config()
     reg = Registry(config)
 
-    profile = reg.get_profile(name)
+    profile = reg.get_profile(name, missing_ok=True)
     if profile is None:
         eprint(f"profile not found: {name!r}")
         sys.exit(1)
