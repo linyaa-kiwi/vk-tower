@@ -8,7 +8,7 @@ import os
 from os import PathLike
 from pathlib import Path
 import re
-from typing import Iterator
+from typing import Iterator, Optional
 
 from .config import Config
 from .util import json_load_path
@@ -201,6 +201,17 @@ class Registry:
         # Reduce latency by yielding each profile as it is loaded.
         for x in self.__load_profiles():
             yield x
+
+    def get_profile(self, name: str, /) -> Optional["Profile"]:
+        p = self.__profiles.get(name)
+        if p is not None:
+            return p
+
+        for p in self.__load_profiles():
+            if p.name == name:
+                return p
+
+        return None
 
 @dataclass
 class Profile:
