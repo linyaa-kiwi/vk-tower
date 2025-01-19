@@ -13,6 +13,9 @@ from typing import Iterator, Optional
 from .config import Config
 from .util import dig, json_load_path
 
+CapName = str
+ProfileName = str
+
 class ProfileNotFoundError(RuntimeError):
 
     profile: str
@@ -22,7 +25,6 @@ class ProfileNotFoundError(RuntimeError):
 
     def __str__(self):
         return f"profile not found: {self.profile!r}"
-
 
 class ProfileRedefinitionError(RuntimeError):
 
@@ -376,6 +378,39 @@ class Registry:
 
         raise ProfileNotFoundError(name)
 
+    def get_profile_recursive_deps(self, name: str) -> "ProfileGlobalDeps":
+        main_profile = self.get_profile(name, missing_ok=False)
+        gdeps = ProfileGlobalDeps()
+
+        stack: [Profile] = [main_profile]
+        visited: set[ProfileName] = set()
+
+        while stack:
+            profile = stack.pop()
+            visited.add(profile.name)
+
+            ideps = profile.file.get_profile_internal_deps(profile.name)
+
+            # Ignore `ideps.local_profiles_names` because
+            # `ideps.local_cap_names` already contains all the needed caps.
+
+            for name in ideps.local_cap_names:
+                pc = ProfileCapability(profile, name)
+                gdeps.caps.setdefault(pc.key, pc)
+
+            for name in ideps.external_profile_names:
+                if name in visited:
+                    continue
+
+                child = self.get_profile(name)
+                if child is None:
+                    gdeps.undefined_profiles.add(name)
+                    continue
+
+                stack.append(child)
+
+        return gdeps
+
 @dataclass
 class ProfileInternalDeps:
     """
@@ -447,3 +482,33 @@ class Profile:
     _: KW_ONLY
     name: str
     file: ProfilesFile
+
+@dataclass
+class ProfileCapability:
+
+    Key = (Profile, CapName)
+
+    profile: Profile
+    cap: CapName
+
+    @property
+    def key(self):
+        return (self.profile.name, self.cap)
+
+@dataclass
+class ProfileGlobalDeps:
+    """
+    Profile dependencies, recursively expanded using the full registry.
+
+    When building this object, all dependencies are recursively expanded.
+    The object contains only the leaf nodes from the expansion.
+    As a consequence, the only profile names remaining after expansion are those
+    profiles not defined in the registry.
+    """
+
+    caps: dict[ProfileCapability.Key, ProfileCapability]
+    undefined_profiles: set[ProfileName]
+
+    def __init__(self):
+        self.caps = {}
+        self.undefined_profiles = set()
