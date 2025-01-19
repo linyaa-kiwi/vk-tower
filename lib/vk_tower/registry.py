@@ -75,8 +75,14 @@ class Registry:
 
     config: Config
 
-    __files: dict[RegistryFiletype, dict[str, RegistryFile]]
-    """Middle key is `RegistryFile.name`."""
+    __vkxml_files: dict[str, RegistryFile]
+    """Key is `RegistryFile.name`."""
+
+    __profiles_files: dict[str, RegistryFile]
+    """Key is `RegistryFile.name`."""
+
+    __profiles_schema_files: dict[str, RegistryFile]
+    """Key is `RegistryFile.name`."""
 
     __loaded_profiles_files: set[str]
     """Keys are `RegistryFile.name`."""
@@ -88,11 +94,9 @@ class Registry:
         self.config = config
         assert all(map(Path.is_absolute, self.config.iter_registry_paths()))
 
-        self.__files = {
-            RegistryFiletype.vkxml: {},
-            RegistryFiletype.profiles: {},
-            RegistryFiletype.profiles_schema: {},
-        }
+        self.__vkxml_files = {}
+        self.__profiles_files = {}
+        self.__profiles_schema_files = {}
 
         # To ensure that register queries have consistent results over the
         # registry's lifetime, for a given filetype (profile, schema, etc)
@@ -107,42 +111,36 @@ class Registry:
         self.__loaded_profiles_files = set()
 
     def __add_file(self, type: RegistryFiletype, path: PathLike) -> None:
-        path = Path(path)
-        reg_file = RegistryFile.from_path(type, path)
         self.__files[type].setdefault(reg_file.name, reg_file)
 
     def __collect_vkxml_files(self) -> None:
         for path in self.__iter_glob_files("*.xml"):
-            self.__add_file(RegistryFiletype.vkxml, path)
+            type = RegistryFiletype.vkxml
+            reg_file = RegistryFile.from_path(type, path)
+            self.__vkxml_files.setdefault(reg_file.name, reg_file)
 
     def __collect_profiles_files(self) -> None:
         # Descend into subdirs.
         for path in chain(self.__iter_glob_files("profiles/**/*.json"),
                           self.__iter_glob_files("profiles/**/*.json5")):
-            if re.match(r"^(?:VP|vp)_.+\.(?:json|json5)$", path.name):
-                self.__add_file(RegistryFiletype.profiles, path)
+            if not re.match(r"^(?:VP|vp)_.+\.(?:json|json5)$", path.name):
+                continue
+            type = RegistryFiletype.profiles
+            reg_file = RegistryFile.from_path(type, path)
+            self.__profiles_files.setdefault(reg_file.name, reg_file)
 
     def __collect_profiles_schema_files(self) -> None:
         # Do not descend into subdirs.
         for path in chain(self.__iter_glob_files("schemas/profiles-*.json"),
                           self.__iter_glob_files("schemas/profiles-*.json5")):
-            self.__add_file(RegistryFiletype.profiles_schema, path)
+            type = RegistryFiletype.profiles_schema
+            reg_file = RegistryFile.from_path(type, path)
+            self.__profiles_schema_files.setdefault(reg_file.name, reg_file)
 
     def iter_files(self) -> Iterator[RegistryFile]:
-        for type in RegistryFiletype:
-            for reg_file in self.__files[type].values():
-                yield reg_file
-
-    def iter_vkxml_files(self) -> Iterator[RegistryFile]:
-        for x in self.__files[RegistryFiletype.vkxml].values():
-            yield x
-
-    def iter_profiles_files(self) -> Iterator[RegistryFile]:
-        for x in self.__files[RegistryFiletype.profiles].values():
-            yield x
-
-    def iter_profiles_schema_files(self) -> Iterator[RegistryFile]:
-        for x in self.__files[RegistryFiletype.profiles_schema].values():
+        for x in chain(self.__vkxml_files.values(),
+                       self.__profiles_files.values(),
+                       self.__profiles_schema_files.values()):
             yield x
 
     def __iter_glob_files(self, glob: str) -> Iterator[Path]:
@@ -168,7 +166,7 @@ class Registry:
             return
 
         data = json_load_path(reg_file.path)
-        profile_names = data["profiles"]keys()
+        profile_names = data["profiles"].keys()
 
         # Check if the file redefines any profile previously defined in the
         # registry. To improve data consistency under exceptions, do the check
@@ -202,7 +200,7 @@ class Registry:
         Yield each profile as it is loaded.  Previously loaded profiles are
         skipped.
         """
-        for reg_file in self.iter_profiles_files():
+        for reg_file in self.__profiles_files.values():
             for profile in self.__load_profiles_file(reg_file):
                 # Reduce latency by yielding each profile as it is loaded.
                 yield profile
