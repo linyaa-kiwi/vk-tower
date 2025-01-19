@@ -109,6 +109,18 @@ class ProfilesFile:
         for name in table:
             yield name
 
+    def iter_profile_objs(self) -> Iterator[dict]:
+        table = self.data.get("profiles")
+        if table is None:
+            return
+        for obj in table.values():
+            yield obj
+
+    def remove_optionals(self) -> None:
+        """Remove member `optionals` from all profiles."""
+        for profile_obj in self.iter_profile_objs():
+            profile_obj.pop("optionals", None)
+
 class Registry:
 
     config: Config
