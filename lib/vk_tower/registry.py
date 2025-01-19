@@ -1,7 +1,7 @@
 # Copyright 2025 Google
 # SPDX-License-Identifier: MIT
 
-from dataclasses import dataclass, KW_ONLY
+from dataclasses import dataclass, field, KW_ONLY
 import enum
 from itertools import chain
 import os
@@ -11,7 +11,7 @@ import re
 from typing import Iterator, Optional
 
 from .config import Config
-from .util import json_load_path
+from .util import dig, json_load_path
 
 class ProfileRedefinitionError(RuntimeError):
 
@@ -120,6 +120,86 @@ class ProfilesFile:
         """Remove member `optionals` from all profiles."""
         for profile_obj in self.iter_profile_objs():
             profile_obj.pop("optionals", None)
+
+    def get_profile_internal_deps(self, profile_name: str, /) -> "ProfileInternalDeps":
+        """See `ProfileInternalDeps`."""
+
+        main_profile_name = profile_name
+        del profile_name
+
+        deps = ProfileInternalDeps()
+
+        def collect_profiles():
+            visited = set()
+            stack: [str] = [main_profile_name]
+
+            while stack:
+                profile_name: str = stack.pop()
+                assert isinstance(profile_name, str)
+
+                assert profile_name not in visited
+                visited.add(profile_name)
+
+                profile_obj = self.get_profile_obj(profile_name)
+                if profile_obj is None:
+                    deps.external_profile_names.add(profile_name)
+                    continue
+
+                deps.local_profile_names.add(profile_name)
+
+                for dep_name in dig(profile_obj, "profiles", default=[]):
+                    if dep_name not in visited:
+                        stack.append(dep_name)
+
+        collect_profiles()
+
+        def collect_caps():
+            for profile_name in deps.local_profile_names:
+                profile_obj = self.get_profile_obj(profile_name)
+
+                stack = []
+                stack += profile_obj.get("capabilities", [])
+                stack += profile_obj.get("optionals", [])
+
+                while stack:
+                    cap = stack.pop()
+
+                    if isinstance(cap, str):
+                        if cap not in deps.local_cap_names:
+                            deps.local_cap_names.add(cap)
+                    elif isinstance(cap, list):
+                        for sub_cap in cap:
+                            stack.append(sub_cap)
+                    else:
+                        path = os.fspath(self.file.reg_file.path)
+                        msg = f"invalid data in profiles file: {path!r}"
+                        raise ProfileValidationError(msg)
+
+        collect_caps()
+
+        return deps
+
+    def trim_to_profile(self, name: str) -> None:
+        """
+        Discard profiles and capability sets not referenced by the profile.
+
+        For the requested profile name, collect the names of all profiles and
+        capability sets that the profile recursively references, local to this
+        file.  Then delete all other profiles and capability sets.
+        """
+        deps = self.get_profile_internal_deps(name)
+
+        profiles = self.data.get("profiles")
+        good_names = deps.local_profile_names | deps.external_profile_names
+        bad_names = set(profiles.keys()) - good_names
+        for name in bad_names:
+            profiles.pop(name)
+
+        caps = self.data.get("capabilities")
+        good_names = deps.local_cap_names
+        bad_names = set(caps.keys()) - good_names
+        for name in bad_names:
+            caps.pop(name)
 
 class Registry:
 
@@ -272,6 +352,71 @@ class Registry:
                 return p
 
         return None
+
+@dataclass
+class ProfileInternalDeps:
+    """
+    Profile dependencies that are internal to a profiles file.
+
+    When building this object, all dependencies are recursively expanded.
+
+    For example, consider the following profiles file.
+    ```
+    {
+        profiles: {
+            VP_apple: {
+                ...,
+                profiles: [
+                    "VP_banana",
+                ],
+                capabilities: [
+                    "cap_00",
+                    ["cap_01", "cap_02"],
+                ],
+            },
+            VP_banana: {
+                profiles: [
+                    "VP_canteloupe",
+                    "VP_zebra", // defined externally
+                ],
+                capabilities: [
+                    "cap_03",
+                    "cap_04",
+                ],
+                optionals: [
+                    "cap_05", // optionals are included too
+                ],
+            }
+            VP_canteloupe: {
+                profiles: [],
+                capabilities: [
+                    "cap_06",
+                ],
+            },
+            VP_durian: { // not in VP_apple's recursive dependencies
+                profiles: [],
+                capabilities: [
+                    "cap_07",
+                ],
+            },
+        },
+    }
+    ```
+
+    Then the internal dependencies of VP_apple are:
+    ```
+    local_profiles_names: ["VP_banana", "VP_canteloupe"]
+    local_cap_names: ["cap_00", "cap_01", "cap_02", "cap_03", "cap_04",
+                      "cap_05", "cap_06"]
+    external_profile_names: ["VP_zebra"]
+    ```
+    """
+
+    _: KW_ONLY
+
+    local_profile_names:        set[str] = field(default_factory=set)
+    local_cap_names:            set[str] = field(default_factory=set)
+    external_profile_names:     set[str] = field(default_factory=set)
 
 @dataclass
 class Profile:
