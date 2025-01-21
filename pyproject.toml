@@ -19,6 +19,7 @@ python = "^3.11"
 click = "^8.1.7"
 json5 = "^0.9.28"
 xdg-base-dirs = "^6.0.2"
+semver = "^3.0.2"
 
 [tool.poetry.scripts]
 vk-tower = "vk_tower.cli:main"
