@@ -4,11 +4,12 @@
 from dataclasses import dataclass, field, KW_ONLY
 import enum
 from itertools import chain
+from numbers import Number
 import os
 from os import PathLike
 from pathlib import Path
 import re
-from typing import Iterator, Optional
+from typing import Any, Iterator, Optional
 
 from .config import Config
 from .registry_xml import RegistryXML
@@ -41,6 +42,19 @@ class ProfileRedefinitionError(RuntimeError):
 
     orig_profile: "Profile"
     bad_reg_file: "RegistryFile"
+
+class ProfilesFileError(RuntimeError):
+
+    file: 'ProfilesFile'
+    message: str
+
+    def __init__(self, file: 'ProfilesFile', message: str):
+        self.file = file
+        self.message = message
+
+    def __str__(self):
+        path = os.fspath(self.file.reg_file.path)
+        return f"in file {path!r}: {self.message}"
 
 class RegistryFiletype(enum.IntEnum):
     # IntEnum provides a total order.
@@ -232,6 +246,50 @@ class ProfilesFile:
         bad_names = set(caps.keys()) - good_names
         for name in bad_names:
             caps.pop(name)
+
+    def normalize_vk_names(self, xml: RegistryXML) -> None:
+        for cap_obj in self.data["capabilities"].values():
+            key = "features"
+            obj = cap_obj.get(key)
+            if obj is not None:
+                cap_obj[key] = self.__normalize_vk_names(xml, ".features", obj)
+
+            key = "properties"
+            obj = cap_obj.get(key)
+            if obj is not None:
+                cap_obj[key] = self.__normalize_vk_names(xml, ".properties", obj)
+
+    def __normalize_vk_names(self, xml: RegistryXML,
+                             json_path: str, obj: Any) -> Any:
+        """
+        Recursive implementation of `normalize_vk_names`.
+
+        The `json_path` is used in error messages, and so should be the path _before_ normalization
+        is applied.
+        """
+
+        if isinstance(obj, dict):
+            return {
+                xml.normalize_vk_name(k): \
+                    self.__normalize_vk_names(xml, f"{json_path}.{k}", v)
+                for k, v in obj.items()
+            }
+        elif isinstance(obj, list):
+            return [
+                self.__normalize_vk_names(xml, f"{json_path}[{i}]", v)
+                for i, v in enumerate(obj)
+            ]
+        elif isinstance(obj, str):
+            return xml.normalize_vk_name(obj)
+        elif isinstance(obj, bool):
+            return obj
+        elif isinstance(obj, Number):
+            return obj
+        elif obj is None:
+            return obj
+        else:
+            raise ProfilesFileError(self,
+                    f"value at {json_path!r} has unexpected type {type(obj)}")
 
 class Registry:
 
