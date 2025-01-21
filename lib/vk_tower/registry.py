@@ -16,6 +16,16 @@ from .util import dig, json_load_path
 CapName = str
 ProfileName = str
 
+class RegistryFileNotFoundError(RuntimeError):
+
+    name: str
+
+    def __init__(self, name):
+        self.name = name
+
+    def __str__(self):
+        return f"registry file not found: {self.name!r}"
+
 class ProfileNotFoundError(RuntimeError):
 
     profile: str
@@ -304,6 +314,18 @@ class Registry:
             for abs_path in reg_root.glob(glob):
                 if abs_path.is_file():
                     yield abs_path
+
+    def get_vk_xml_file(self, *, missing_ok=False) -> Optional[RegistryFile]:
+        name = "vk.xml"
+
+        reg_file = self.__vkxml_files.get(name)
+        if reg_file.name is not None:
+            return reg_file
+
+        if missing_ok:
+            return None
+
+        raise RegistryFileNotFoundError(name)
 
     def __load_profiles_file(self, file: ProfilesFile) -> Iterator["Profile"]:
         """
