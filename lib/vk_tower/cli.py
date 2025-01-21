@@ -163,6 +163,9 @@ def cmd_ls_profiles(format):
                 Collect the names of all profiles and capability sets that the
                 profile recursively references, local to this file.  Then delete
                 all other profiles and capability sets.
+            normalize-vk-tokens
+                If a token in the Vulkan API has been deprecated in favor of
+                a new token, then replace the old with the new.
     """,
 )
 @click.argument("name", required = True)
@@ -172,7 +175,7 @@ def cmd_ls_profiles(format):
     help = "Choose the output format. Default is `json`.",
 )
 @click.option("-X", "--transform", "transforms",
-    type = click.Choice(["no-optionals", "trim"]),
+    type = click.Choice(["no-optionals", "trim", "normalize-vk-tokens"]),
     multiple = True,
     help = """
         Apply transformation to the profiles file.
@@ -193,6 +196,8 @@ def cmd_print_profile(name, format, transforms):
         profile.file.remove_optionals()
     if "trim" in transforms:
         profile.file.trim_to_profile(profile.name)
+    if "normalize-vk-tokens" in transforms:
+        profile.file.normalize_vk_names(reg.get_xml())
 
     json_pp(profile.file.data, format=format)
 
