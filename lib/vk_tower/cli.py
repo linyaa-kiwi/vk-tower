@@ -9,6 +9,7 @@ import click
 from .config import Config
 from .registry import Registry
 from .util import eprint, json_pp
+from .registry_xml import RegistryXML
 
 @click.group(
     name = "vk-tower",
@@ -194,6 +195,17 @@ def cmd_print_profile(name, format, transforms):
         profile.file.trim_to_profile(profile.name)
 
     json_pp(profile.file.data, format=format)
+
+@cmd_main.command(
+    name = "debug-dump-parsed-xml",
+    hidden = True,
+    help = "Dump all parsed XML as JSON.",
+)
+def cmd_debug_dump_parsed_xml():
+    out = sys.stdout
+    config = Config()
+    reg = Registry(config)
+    json_pp(reg.get_xml().to_json_obj())
 
 def main():
     cmd_main()
