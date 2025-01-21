@@ -11,6 +11,7 @@ import re
 from typing import Iterator, Optional
 
 from .config import Config
+from .registry_xml import RegistryXML
 from .util import dig, json_load_path
 
 CapName = str
@@ -251,6 +252,8 @@ class Registry:
     __profiles: dict[str, "Profile"]
     """Key is `Profile.name`."""
 
+    __xml: RegistryXML
+
     def __init__(self, config: Config):
         self.config = config
         assert all(map(Path.is_absolute, self.config.iter_registry_paths()))
@@ -267,6 +270,8 @@ class Registry:
         self.__collect_vkxml_files()
         self.__collect_profiles_files()
         self.__collect_profiles_schema_files()
+
+        self.__xml = None
 
         self.__profiles = {}
         self.__loaded_profiles_files = set()
@@ -326,6 +331,16 @@ class Registry:
             return None
 
         raise RegistryFileNotFoundError(name)
+
+    def get_xml(self) -> RegistryXML:
+        if self.__xml is None:
+            self.__xml = RegistryXML()
+
+            reg_file = self.get_vk_xml_file(missing_ok=True)
+            if reg_file is not None:
+                self.__xml.add_file(reg_file.path)
+
+        return self.__xml
 
     def __load_profiles_file(self, file: ProfilesFile) -> Iterator["Profile"]:
         """
