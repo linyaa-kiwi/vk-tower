@@ -5,8 +5,9 @@ from copy import copy
 from dataclasses import dataclass, KW_ONLY
 import enum
 from io import StringIO
+from numbers import Number
 from os import PathLike
-from typing import Optional
+from typing import Any, Optional
 import xml.etree.ElementTree as ET
 
 class XmlError(RuntimeError):
@@ -183,15 +184,6 @@ class RegistryXML:
 
                 self.limits[limit.key] = limit
 
-    def normalize_vk_name(self, name: str) -> str:
-        assert isinstance(name, str)
-
-        while True:
-            next_name = self.aliases.get(name)
-            if next_name is None:
-                return name
-            name = next_name
-
     def to_json_obj(self):
         return {
             "aliases": self.aliases,
@@ -200,3 +192,50 @@ class RegistryXML:
                 for k, v in self.limits.items()
             },
         }
+
+def normalize_vk_name(xml: RegistryXML, name: str) -> str:
+    """
+    Normalize a name in the Vulkan API.
+
+    If the name has been deprecated in favor of a new name, then return the new name. Otherwise,
+    return the name as-is.
+    """
+    while True:
+        next_name = xml.aliases.get(name)
+        if next_name is None:
+            return name
+        name = next_name
+
+def normalize_vk_names_deep(xml: RegistryXML, json_obj: Any, json_path: str) -> Any:
+    """
+    Recursively normalize all Vulkan names in read-only json object.
+
+    See `normalize_vk_name`.
+
+    The `json_path` is used in error messages, and so should be the path _before_ normalization is
+    applied.
+    """
+
+    obj = json_obj
+
+    if isinstance(obj, dict):
+        return {
+            normalize_vk_name(xml, k): \
+                normalize_vk_names_deep(xml, v, f"{json_path}.{k}")
+            for k, v in obj.items()
+        }
+    elif isinstance(obj, list):
+        return [
+            normalize_vk_names_deep(xml, v, f"{json_path}[{i}]")
+            for i, v in enumerate(obj)
+        ]
+    elif isinstance(obj, str):
+        return normalize_vk_name(xml, obj)
+    elif isinstance(obj, bool):
+        return obj
+    elif isinstance(obj, Number):
+        return obj
+    elif obj is None:
+        return obj
+    else:
+        raise ValueError(f"json value at {json_path!r} has unexpected type {type(obj)}")

@@ -12,7 +12,10 @@ import re
 from typing import Any, Iterator, Optional
 
 from .config import Config
-from .registry_xml import RegistryXML
+from .registry_xml import (
+    RegistryXML,
+    normalize_vk_names,
+)
 from .util import dig, json_load_path
 
 CapName = str
@@ -252,44 +255,12 @@ class ProfilesFile:
             key = "features"
             obj = cap_obj.get(key)
             if obj is not None:
-                cap_obj[key] = self.__normalize_vk_names(xml, ".features", obj)
+                cap_obj[key] = normalize_vk_names(xml, ".features", obj)
 
             key = "properties"
             obj = cap_obj.get(key)
             if obj is not None:
-                cap_obj[key] = self.__normalize_vk_names(xml, ".properties", obj)
-
-    def __normalize_vk_names(self, xml: RegistryXML,
-                             json_path: str, obj: Any) -> Any:
-        """
-        Recursive implementation of `normalize_vk_names`.
-
-        The `json_path` is used in error messages, and so should be the path _before_ normalization
-        is applied.
-        """
-
-        if isinstance(obj, dict):
-            return {
-                xml.normalize_vk_name(k): \
-                    self.__normalize_vk_names(xml, f"{json_path}.{k}", v)
-                for k, v in obj.items()
-            }
-        elif isinstance(obj, list):
-            return [
-                self.__normalize_vk_names(xml, f"{json_path}[{i}]", v)
-                for i, v in enumerate(obj)
-            ]
-        elif isinstance(obj, str):
-            return xml.normalize_vk_name(obj)
-        elif isinstance(obj, bool):
-            return obj
-        elif isinstance(obj, Number):
-            return obj
-        elif obj is None:
-            return obj
-        else:
-            raise ProfilesFileError(self,
-                    f"value at {json_path!r} has unexpected type {type(obj)}")
+                cap_obj[key] = normalize_vk_names(xml, ".properties", obj)
 
 class Registry:
 
