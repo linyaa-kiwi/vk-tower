@@ -206,6 +206,70 @@ def cmd_print_profile(name, format, transforms):
     json_pp(profile.file.data, format=format)
 
 @cmd_main.command(
+    name = "get-profile-requirements",
+    short_help = "Print a profile's requirements",
+    help = """
+        Print a profile's requirements.
+
+        \b
+        The output layout (in json5) is:
+            {
+                api_version: ...,
+                profiles: [
+                    // names of requires profiles
+                ],
+                capabilities: {
+                    // same layout as in profiles file
+                },
+            }
+
+        In the output, all Vulkan API names are normalized.  That is, if a token
+        in the Vulkan API has been deprecated in favor of a new token, then the
+        old is replaced with the new.
+
+        \b
+        Transformations
+            recurse-profiles
+                Recursively expand the capabilities of each required profile,
+                if the profile is defined in the registry.
+    """,
+)
+@click.argument("name", required = True)
+@click.option("-F", "--format",
+    type = click.Choice(["json", "json5"]),
+    default = "json5",
+    help = "Choose the output format. Default is `json5`.",
+)
+@click.option("-X", "--transform", "transforms",
+    type = click.Choice(["recurse-profiles"]),
+    multiple = True,
+    help = """
+        Apply transformation to the profile.
+        Option can be given multiple times.
+    """,
+)
+@click.option("-R", "recurse",
+    is_flag = True,
+    help = "Equivalent to `--transform recurse-profiles`.",
+)
+def cmd_print_profile_requirements(name, format, transforms, recurse):
+    out = sys.stdout
+    config = Config()
+    reg = Registry(config)
+
+    recurse = recurse or ("recurse-profiles" in transforms)
+
+    reqs = reg.get_profile_requirements(name,
+            missing_ok = True,
+            recurse_profiles = recurse,
+    )
+    if reqs is None:
+        eprint(f"profile not found: {name!r}")
+        sys.exit(1)
+
+    json_pp(reqs.to_json_obj(), format=format)
+
+@cmd_main.command(
     name = "debug-dump-parsed-xml",
     hidden = True,
     help = "Dump all parsed XML as JSON.",
