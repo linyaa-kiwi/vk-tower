@@ -479,7 +479,9 @@ def normalize_vk_names_deep(xml: RegistryXML, json_obj: Any, json_path: str) -> 
 
     obj = json_obj
 
-    if isinstance(obj, dict):
+    if obj is None:
+        return obj
+    elif isinstance(obj, dict):
         return {
             normalize_vk_name(xml, k): \
                 normalize_vk_names_deep(xml, v, f"{json_path}.{k}")
@@ -495,8 +497,6 @@ def normalize_vk_names_deep(xml: RegistryXML, json_obj: Any, json_path: str) -> 
     elif isinstance(obj, bool):
         return obj
     elif isinstance(obj, Number):
-        return obj
-    elif obj is None:
         return obj
     else:
         raise ValueError(f"json value at {json_path!r} has unexpected type {type(obj)}")
