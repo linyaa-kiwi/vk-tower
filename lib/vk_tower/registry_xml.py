@@ -264,6 +264,10 @@ class RegistryXML:
 
                 self.limits[limit.key] = limit
 
+    def get_limit(self, struct: str, member: str) -> LimitType:
+        key = LimitKey(struct, member)
+        return self.limits[key]
+
     def to_json_obj(self):
         return {
             "aliases": self.aliases,
