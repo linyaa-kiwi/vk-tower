@@ -7,8 +7,88 @@ import enum
 from io import StringIO
 from numbers import Number
 from os import PathLike
+import re
 from typing import Any, Optional
 import xml.etree.ElementTree as ET
+
+def vendor_get_sort_score(name: str):
+    if not name:
+        raise ValueError("empty vendor name")
+
+    match name:
+        case "KHR":
+            return 0
+        case "KHRX":
+            return 1
+        case "EXT":
+            return 2
+        case "EXTX":
+            return 3
+        case _:
+            return 4
+
+def extension_sort_key(name: str):
+    """Key for sorting extension names."""
+    m = re.match(r"^VK_([^_]+)_", name)
+    assert m is not None
+    return (vendor_get_sort_score(m[1]), name)
+
+def struct_sort_key(name: str):
+    m = re.match(r"^Vk\w+([A-Z]{3,})?$", name)
+    vendor = m[1]
+
+    if vendor is None:
+        score = 10
+    else:
+        score = 20 + vendor_get_sort_score(vendor)
+
+    return (score, name)
+
+def __feature_struct_get_sort_score(name):
+    m = re.match(r"^VkPhysicalDevice(Vulkan\w+)?Features$", name)
+    if m is not None:
+        if m[1] is None:
+            return 10
+        else:
+            return 20
+
+    m = re.match(r"^Vk\w+Features([A-Z]{3,})?$", name)
+    if m is not None:
+        vendor = m[1]
+        if vendor is None:
+            return 30
+        else:
+            return 40 + vendor_get_sort_score(vendor)
+
+    return 50
+
+def feature_struct_sort_key(name: str):
+    """Key for sorting names of Vulkan feature structs."""
+    score = __feature_struct_get_sort_score(name)
+    return (score, name)
+
+def __property_struct_get_sort_score(name):
+    m = re.match(r"^VkPhysicalDevice(Vulkan\w+)?Properties$", name)
+    if m is not None:
+        if m[1] is None:
+            return 10
+        else:
+            return 20
+
+    m = re.match(r"^Vk\w+Properties([A-Z]{3,})?$", name)
+    if m is not None:
+        vendor = m[1]
+        if vendor is None:
+            return 30
+        else:
+            return 40 + vendor_get_sort_score(vendor)
+
+    return 50
+
+def property_struct_sort_key(name: str):
+    """Key for sorting names of Vulkan property structs."""
+    score = __property_struct_get_sort_score(name)
+    return (score, name)
 
 class XmlError(RuntimeError):
 
