@@ -36,6 +36,8 @@ class JsonFileError(RuntimeError):
 def _json_default(x):
     if isinstance(x, os.PathLike):
         return os.fspath(x)
+    elif isinstance(x, set):
+        return list(sorted(x))
     else:
         # Mimic the error message of `json.dump`.
         raise TypeError(f"Object of type {type(x)} is not JSON serializable")
