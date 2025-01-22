@@ -1,6 +1,7 @@
 # Copyright 2025 Google
 # SPDX-License-Identifier: MIT
 
+from copy import copy
 from dataclasses import dataclass, field, KW_ONLY
 import enum
 from itertools import chain
@@ -9,17 +10,30 @@ import os
 from os import PathLike
 from pathlib import Path
 import re
-from typing import Any, Iterator, Optional
+from typing import Any, Iterable, Iterator, Optional
+
+from semver import Version
 
 from .config import Config
 from .registry_xml import (
     RegistryXML,
-    normalize_vk_names,
+    normalize_vk_names_deep,
+    extension_sort_key,
+    struct_sort_key,
+    feature_struct_sort_key,
+    property_struct_sort_key,
+    struct_to_json_obj,
 )
-from .util import dig, json_load_path
+from .util import dig, get_log, in_debug_mode, json_load_path
+
+log = get_log()
+debug = in_debug_mode()
 
 CapName = str
 ProfileName = str
+StructName = str
+ExtensionName = str
+FormatName = str
 
 class RegistryFileNotFoundError(RuntimeError):
 
@@ -58,6 +72,242 @@ class ProfilesFileError(RuntimeError):
     def __str__(self):
         path = os.fspath(self.file.reg_file.path)
         return f"in file {path!r}: {self.message}"
+
+@dataclass
+class CapabilitySet:
+
+    xml: RegistryXML
+    _: KW_ONLY
+    extensions: dict[ExtensionName, int]    = field(default_factory=dict)
+    features: dict[StructName, Any]         = field(default_factory=dict)
+    properties: dict[StructName, Any]       = field(default_factory=dict)
+    formats: dict[FormatName, Any]          = field(default_factory=dict)
+
+    @staticmethod
+    def from_json_obj(xml: RegistryXML, obj: Any) -> 'CapabilitySet':
+        return CapabilitySet(xml = xml,
+                             extensions = obj.get("extensions", {}),
+                             features = obj.get("features", {}),
+                             properties = obj.get("properties", {}),
+                             formats = obj.get("formats", {}))
+
+    def __post_init__(self):
+        self.features = \
+            normalize_vk_names_deep(self.xml, self.features, ".capabilities.features")
+        self.properties = \
+            normalize_vk_names_deep(self.xml, self.properties, ".capabilities.properties")
+        self.formats = \
+            normalize_vk_names_deep(self.xml, self.formats, ".capabilities,formats")
+
+    def merge(self, other: 'CapabilitySet') -> None:
+        assert self.xml is other.xml
+        self.__class__.__merge(self.xml, self, other)
+
+    @classmethod
+    def __merge(cls, xml: RegistryXML,
+                dst: 'CapabilitySet',
+                src: 'CapabilitySet') -> None:
+        cls.__merge_extensions(dst.extensions, src.extensions)
+        cls.__merge_features(dst.features, src.features)
+        cls.__merge_properties(xml, dst.properties, src.properties)
+        cls.__merge_formats(xml, dst.formats, src.formats)
+
+    @classmethod
+    def __merge_extensions(cls, dst, src) -> None:
+        for name, src_version in src.items():
+            if debug:
+                log.debug(f"merge capability extension {name}")
+
+            dst_version = dst.get(name)
+
+            if dst_version is None:
+                new_version = src_version
+            else:
+                new_version = max(dst_version, src_version)
+
+            dst[name] = new_version
+
+    @classmethod
+    def __merge_features(cls, dst, src) -> None:
+        for struct_name, src_struct in src.items():
+            dst_struct = dst.setdefault(struct_name, {})
+
+            for member_name, src_value in src_struct.items():
+                if debug:
+                    log.debug(f"merge feature {struct_name}.{member_name}")
+
+                dst_value = dst_struct.get(member_name, False)
+
+                assert isinstance(dst_value, bool)
+                assert isinstance(src_value, bool)
+
+                if dst_value is True:
+                    continue
+                elif src_value is False:
+                    continue
+                else:
+                    dst_struct = dst.setdefault(struct_name, {})
+                    dst_struct[member_name] = True
+
+    @classmethod
+    def __merge_properties(cls, xml, dst, src) -> None:
+        for struct_name, src_struct in src.items():
+            dst_struct = dst.setdefault(struct_name, {})
+
+            for member_name, src_value in src_struct.items():
+                if struct_name == "VkPhysicalDeviceProperties" and member_name == "limits":
+                    src_limits_struct = src_value
+                    dst_limits_struct = dst_struct.setdefault("limits", {})
+
+                    for member_name, src_value in src_limits_struct.items():
+                        if debug:
+                            log.debug(f"merge property {struct_name}.limits.{member_name}")
+
+                        dst_value = dst_limits_struct.get(member_name)
+
+                        if dst_value is None:
+                            new_value = src_value
+                        else:
+                            limit = xml.get_limit("VkPhysicalDeviceLimits", member_name)
+                            new_value = limit.merge_values(dst_value, src_value)
+
+                        if debug:
+                            log.debug(f"merge property {struct_name}.limits.{member_name}: "
+                                      f"{new_value!r} <- dst={dst_value!r} src={src_value!r}")
+
+                        dst_limits_struct[member_name] = new_value
+                else:
+                    if debug:
+                        log.debug(f"merge property {struct_name}.{member_name}")
+
+                    dst_value = dst_struct.get(member_name)
+
+                    if dst_value is None:
+                        new_value = src_value
+                    else:
+                        limit = xml.get_limit(struct_name, member_name)
+                        new_value = limit.merge_values(dst_value, src_value)
+
+                    if debug:
+                        log.debug(f"merge property {struct_name}.{member_name}: "
+                                  f"{new_value!r} <- dst={dst_value!r} src={src_value!r}")
+
+                    dst_struct[member_name] = new_value
+
+    @classmethod
+    def __merge_formats(cls, xml, dst, src) -> None:
+        for format_name, src_format_obj in src.items():
+            if debug:
+                log.debug(f"merge format {format_name}")
+
+            dst_format_obj = dst.setdefault(format_name, {})
+            for struct_name, src_struct in src_format_obj.items():
+                if struct_name != "VkFormatProperties":
+                    log.error(f"format {format_name!r}: cannot merge unexpected struct {struct_name!r}")
+                    continue
+
+                if debug:
+                    log.debug(f"merge format {format_name}: struct {struct_name}")
+
+                dst_struct = dst_format_obj.setdefault(struct_name, {})
+                for member_name, src_member in src_struct.items():
+                    dst_member = dst_struct.setdefault(member_name, set())
+                    for src_flag in src_member:
+                        dst_member.add(src_flag)
+
+    def to_json_obj(self):
+        # Omit empty members
+        obj = {}
+
+        if self.extensions:
+            obj["extensions"] = {
+                name: self.extensions[name]
+                for name in sorted(self.extensions, key=extension_sort_key)
+            }
+
+        features = {}
+        for struct_name in sorted(self.features.keys(), key=feature_struct_sort_key):
+            struct_obj = self.features[struct_name]
+            struct_obj = struct_to_json_obj(self.xml, struct_name, struct_obj)
+            features[struct_name] = struct_obj
+        if features:
+            obj["features"] = features
+
+        properties = {}
+        for struct_name in sorted(self.properties.keys(), key=property_struct_sort_key):
+            struct_obj = self.properties[struct_name]
+            struct_obj = struct_to_json_obj(self.xml, struct_name, struct_obj)
+            properties[struct_name] = struct_obj
+        if properties:
+            obj["properties"] = properties
+
+        formats = {}
+        # TODO: Sort formats better
+        for format_name in sorted(self.formats.keys()):
+            src_format_obj = self.formats[format_name]
+            dst_format_obj = formats.setdefault(format_name, {})
+            for struct_name in sorted(src_format_obj.keys(), key=struct_sort_key):
+                struct_obj = src_format_obj[struct_name]
+                struct_obj = struct_to_json_obj(self.xml, struct_name, struct_obj)
+                dst_format_obj[struct_name] = struct_obj
+        if formats:
+            obj["formats"] = formats
+
+        return obj
+
+@dataclass
+class ProfileRequirements:
+
+    xml: RegistryXML
+    _: KW_ONLY
+    api_version: Version
+    profiles: set[ProfileName]
+    capabilities: CapabilitySet
+
+    def __init__(self, xml: RegistryXML, *,
+                 api_version = None,
+                 profiles = None,
+                 capabilities = None):
+        self.xml = xml
+
+        if api_version is None:
+            api_version = Version(1, 0)
+        self.api_version = api_version
+
+        if profiles is None:
+            profiles = set()
+        self.profiles = profiles
+
+        if capabilities is None:
+            capabilities = CapabilitySet(self.xml)
+        assert capabilities.xml is self.xml
+        self.capabilities = capabilities
+
+    def merge(self, other: 'ProfileRequirements') -> None:
+        self.merge_api_version(other.api_version)
+        self.merge_profiles(other.profiles)
+        self.merge_capabilities(other.capabilities)
+
+    def merge_api_version(self, api_version: Version) -> None:
+        new_version = max(self.api_version, api_version)
+        if debug:
+            log.debug(f"merge api version: "
+                      f"{new_version} <- dst={self.api_version} src={api_version}")
+        self.api_version = new_version
+
+    def merge_profiles(self, profiles: Iterable[ProfileName]) -> None:
+        for x in profiles:
+            self.profiles.add(x)
+
+    def merge_capabilities(self, caps: CapabilitySet) -> None:
+        self.capabilities.merge(caps)
+
+    def to_json_obj(self):
+        return {
+            "api_version": str(self.api_version),
+            "profiles": list(self.profiles),
+            "capabilities": self.capabilities.to_json_obj(),
+        }
 
 class RegistryFiletype(enum.IntEnum):
     # IntEnum provides a total order.
@@ -227,6 +477,34 @@ class ProfilesFile:
         collect_caps()
 
         return deps
+
+    def get_profile_requirements(self, xml: RegistryXML,
+                                 profile_name: str, /) -> ProfileRequirements:
+        profile_obj = self.get_profile_obj(profile_name)
+
+        reqs = ProfileRequirements(xml,
+                api_version = Version.parse(profile_obj["api-version"]),
+                profiles = profile_obj.get("profiles", []),
+        )
+
+        def iter_caps(cap_names) -> Iterator[CapabilitySet]:
+            for cap in cap_names:
+                if isinstance(cap, str):
+                    yield CapabilitySet.from_json_obj(
+                            xml, self.data["capabilities"][cap])
+                elif isinstance(cap, list):
+                    cap_choice = ", ".join(map(repr, cap))
+                    log.warn(f"profile {profile_name!r}: "
+                             f"ignoring capability choice: {cap_choice}")
+                else:
+                    path = os.fspath(self.file.reg_file.path)
+                    msg = f"invalid data in profiles file: {path!r}"
+                    raise ProfileValidationError(msg)
+
+        for capset in iter_caps(profile_obj.get("capabilities", [])):
+            reqs.merge_capabilities(capset)
+
+        return reqs
 
     def trim_to_profile(self, name: str) -> None:
         """
@@ -477,6 +755,51 @@ class Registry:
 
         return gdeps
 
+    def get_profile_requirements(self, name: str, *,
+                                 missing_ok = False,
+                                 recurse_profiles: bool) -> ProfileRequirements:
+        xml = self.get_xml()
+
+        profile = self.get_profile(name, missing_ok=True)
+        if profile is None:
+            if missing_ok:
+                return None
+            raise ProfileNotFoundError(name)
+
+        if not recurse_profiles:
+            return profile.get_requirements(xml)
+
+        # The visited set contains only the names of local profiles; that is, profiles defined in
+        # this registry.
+        #
+        # `deep_reqs.profiles` contains only the names of external profiles; that is, profiles that
+        # are not defined in this registry.
+
+        stack: [Profile] = [profile]
+        visited: set[ProfileName] = set()
+        deep_reqs = ProfileRequirements(xml)
+
+        while stack:
+            profile = stack.pop()
+            visited.add(profile.name)
+            reqs = profile.get_requirements(xml)
+
+            for req_name in reqs.profiles:
+                if req_name in visited:
+                    continue
+
+                req_profile = self.get_profile(req_name, missing_ok=True)
+                if req_profile is None:
+                    deep_reqs.profiles.add(req_name)
+                    continue
+
+                stack.append(req_profile)
+
+            reqs.profiles.clear()
+            deep_reqs.merge(reqs)
+
+        return deep_reqs
+
 @dataclass
 class ProfileInternalDeps:
     """
@@ -548,6 +871,9 @@ class Profile:
     _: KW_ONLY
     name: str
     file: ProfilesFile
+
+    def get_requirements(self, xml: RegistryXML) -> ProfileRequirements:
+        return self.file.get_profile_requirements(xml, self.name)
 
 @dataclass
 class ProfileCapability:
