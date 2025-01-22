@@ -3,12 +3,16 @@
 
 from dataclasses import dataclass
 import json
+import logging
 import os
 from os import fspath, PathLike
 from pathlib import Path
 import sys
 
 import json5
+
+def get_log() -> logging.Logger:
+    return logging.getLogger(name="vk-tower")
 
 @dataclass
 class JsonFileError(RuntimeError):

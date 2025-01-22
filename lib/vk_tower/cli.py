@@ -1,6 +1,7 @@
 # Copyright 2024 Google
 # SPDX-License-Identifier: MIT
 
+import logging
 import os
 import sys
 
@@ -8,7 +9,7 @@ import click
 
 from .config import Config
 from .registry import Registry
-from .util import eprint, json_pp
+from .util import eprint, json_pp, parse_env_bool
 from .registry_xml import RegistryXML
 
 @click.group(
@@ -18,7 +19,12 @@ from .registry_xml import RegistryXML
     },
 )
 def cmd_main():
-    pass
+    debug = parse_env_bool("VK_TOWER_DEBUG", False)
+
+    log_level = None
+    if debug:
+        log_level = logging.DEBUG
+    logging.basicConfig(stream=sys.stderr, level=log_level)
 
 @cmd_main.command(
     name = "config",
