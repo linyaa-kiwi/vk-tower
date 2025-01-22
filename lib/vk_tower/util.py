@@ -14,6 +14,14 @@ import json5
 def get_log() -> logging.Logger:
     return logging.getLogger(name="vk-tower")
 
+__debug_mode = None
+
+def in_debug_mode() -> bool:
+    global __debug_mode
+    if __debug_mode is None:
+        __debug_mode = parse_env_bool("VK_TOWER_DEBUG", False)
+    return __debug_mode
+
 @dataclass
 class JsonFileError(RuntimeError):
 
