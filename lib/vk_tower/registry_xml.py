@@ -168,6 +168,45 @@ class Limit:
     type: str
     limit_types: [LimitType]
 
+    LIMIT_TYPE_SLOTS = (
+        (
+            LimitType.bitmask,
+            LimitType.bits,
+            LimitType.exact,
+            LimitType.max,
+            LimitType.min,
+            LimitType.noauto,
+            LimitType.not_,
+            LimitType.range,
+            LimitType.struct,
+        ),
+        (
+            LimitType.mul,
+            LimitType.pot,
+        ),
+    )
+
+    def __raise_unexpected_limit_type(self):
+        s = ",".join(self.limit_types)
+        raise XmlError("unexpected @limittype={s!r}")
+
+    def __post_init__(self):
+        cls = self.__class__
+        n = len(self.limit_types)
+
+        if n == 0:
+            raise XmlError("empty @limittype")
+
+        if self.limit_types[0] not in cls.LIMIT_TYPE_SLOTS[0]:
+            self.__raise_unexpected_limit_type()
+
+        if n >= 2:
+            if self.limit_types[1] not in cls.LIMIT_TYPE_SLOTS[1]:
+                self.__raise_unexpected_limit_type()
+
+        if n >= 3:
+            self.__raise_unexpected_limit_type()
+
     @property
     def key(self) -> LimitKey:
         return LimitKey(self.struct, self.member)
@@ -179,6 +218,41 @@ class Limit:
             "type": self.type,
             "limit_types": [x.to_json_obj() for x in self.limit_types],
         }
+
+    def merge_values(self, dst, src) -> Any:
+        assert isinstance(dst, list) == isinstance(src, list)
+
+        match self.limit_types[0]:
+            case LimitType.bitmask:
+                return dst | src
+            case LimitType.bits:
+                assert isinstance(dst, Number)
+                assert isinstance(src, Number)
+                return max(dst, src)
+            case LimitType.exact:
+                raise NotImplementedError # TODO
+            case LimitType.max:
+                if isinstance(dst, list):
+                    assert len(dst) == len(src)
+                    return [max(dst[i], src[i]) for i in range(len(dst))]
+                else:
+                    return max(dst, src)
+            case LimitType.min:
+                if isinstance(dst, list):
+                    assert len(dst) == len(src)
+                    return [min(dst[i], src[i]) for i in range(len(dst))]
+                else:
+                    return min(dst, src)
+            case LimitType.noauto:
+                raise NotImplementedError # TODO
+            case LimitType.not_:
+                return dst and src
+            case LimitType.range:
+                return [min(dst[0], src[0]), max(dst[1], src[1])]
+            case LimitType.struct:
+                raise NotImplementedError # TODO
+            case _:
+                assert False
 
 class RegistryXML:
     """
