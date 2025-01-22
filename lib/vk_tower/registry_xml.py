@@ -11,6 +11,14 @@ import re
 from typing import Any, Optional
 import xml.etree.ElementTree as ET
 
+from .util import get_log, in_debug_mode
+
+log = get_log()
+debug = in_debug_mode()
+
+StructName = str
+MemberName = str
+
 def vendor_get_sort_score(name: str):
     if not name:
         raise ValueError("empty vendor name")
@@ -254,6 +262,46 @@ class Limit:
             case _:
                 assert False
 
+@dataclass
+class TypeInfo:
+    """Info for Vulkan type."""
+    pass
+
+@dataclass
+class MemberInfo(TypeInfo):
+    """Info for Vulkan struct member."""
+
+    _: KW_ONLY
+    name: str
+
+    base_type: str
+    """The base type is only the text inside the <type> element. That is, it contains not pointer or
+    array info.
+    """
+
+    def to_json_obj(self):
+        return {
+            "name": self.name,
+            "base_type": self.base_type,
+        }
+
+@dataclass
+class StructInfo(TypeInfo):
+    """Info for Vulkan struct."""
+
+    _: KW_ONLY
+    name: str
+    members: dict[str, MemberInfo]
+
+    def to_json_obj(self):
+        return {
+            "name": self.name,
+            "members": [
+                x.to_json_obj()
+                for x in self.members.values()
+            ],
+        }
+
 class RegistryXML:
     """
     XML registry data.
@@ -264,13 +312,17 @@ class RegistryXML:
     """
 
     aliases: dict[str, str]
-    """Maps @alias to @name for each XML element with attribute @alias."""
+    """Maps @name to @alias for each XML element with attribute @alias. That is, each item pair is
+    `(old_name, new_name)`.
+    """
 
     limits: dict[LimitKey, Limit]
+    struct_info: dict[str, StructInfo]
     
     def __init__(self):
         self.aliases = {}
         self.limits = {}
+        self.struct_info = {}
 
     def add_file(self, file: PathLike) -> None:
         etree: ET.ElementTree = ET.parse(file)
@@ -281,12 +333,19 @@ class RegistryXML:
 
         self.__parse_aliases(reg_elem)
         self.__parse_limit_types(reg_elem)
+        self.__parse_struct_info(reg_elem)
 
     def __parse_aliases(self, reg_elem: ET.Element) -> None:
         assert reg_elem.tag == "registry"
 
         for e in reg_elem.iterfind(".//*[@name][@alias]"):
-            self.aliases[e.get("alias")] = e.get("name")
+            name = e.get("name")
+            assert name
+
+            alias = e.get("alias")
+            assert alias
+
+            self.aliases[name] = alias
 
     def __parse_limit_types(self, reg_elem: ET.Element) -> None:
         assert reg_elem.tag == "registry"
@@ -338,6 +397,46 @@ class RegistryXML:
 
                 self.limits[limit.key] = limit
 
+    def __parse_struct_info(self, reg_elem: ET.Element) -> None:
+        assert reg_elem.tag == "registry"
+
+        for struct_elem in reg_elem.iterfind(".//type[@category='struct']"):
+            struct_name = struct_elem.get("name")
+            if struct_name is None:
+                raise XmlError("<type> must have @name", element=struct_elem)
+
+            if struct_name in self.struct_info:
+                log.warn(f"XML redefines struct {struct_name!r}")
+
+            if struct_elem.get("alias") is not None:
+                continue
+
+            member_infos = {}
+            for member_elem in struct_elem.iterfind("./member"):
+                def raise_invalid_member():
+                    raise XmlError("invalid <member> data", element=member_elem)
+
+                i = iter(member_elem)
+
+                try:
+                    type_elem = next(i)
+                    if type_elem.tag != "type":
+                        raise_invalid_member()
+
+                    name_elem = next(i)
+                    if name_elem.tag != "name":
+                        raise_invalid_member()
+                except StopIteration:
+                    raise_invalid_member()
+
+                name = name_elem.text
+                member_infos[name] = MemberInfo(name = name,
+                                                base_type = type_elem.text)
+
+            self.struct_info[struct_name] = \
+                    StructInfo(name = struct_name,
+                               members = member_infos)
+
     def get_limit(self, struct: str, member: str) -> LimitType:
         key = LimitKey(struct, member)
         return self.limits[key]
@@ -349,6 +448,10 @@ class RegistryXML:
                 k.to_json_key(): v.to_json_obj()
                 for k, v in self.limits.items()
             },
+            "struct_info": [
+                x.to_json_obj()
+                for x in self.struct_info.values()
+            ],
         }
 
 def normalize_vk_name(xml: RegistryXML, name: str) -> str:
@@ -397,3 +500,41 @@ def normalize_vk_names_deep(xml: RegistryXML, json_obj: Any, json_path: str) -> 
         return obj
     else:
         raise ValueError(f"json value at {json_path!r} has unexpected type {type(obj)}")
+
+def struct_to_json_obj(xml: RegistryXML, struct_name: str, struct_obj: dict) -> dict:
+    """In the result, the members have the same order as in the XML."""
+
+    struct_name_normal = normalize_vk_name(xml, struct_name)
+
+    struct_info = xml.struct_info.get(struct_name_normal)
+    if struct_info is None:
+        log.warn(f"struct_to_json_obj: unknown struct name {struct_name!r}")
+        return struct_obj
+
+    new_obj = {}
+
+    # struct_obj may be incomplete, as is usual for Vulkan profiles.
+    # Preserve its incompleteness.
+    for member_name, member_info in struct_info.members.items():
+        member_value = struct_obj.get(member_name)
+
+        # Skip members that are missing from the original struct obj.
+        if member_value is None:
+            continue
+
+        member_type_normal = normalize_vk_name(xml, member_info.base_type)
+        member_is_struct = (xml.struct_info.get(member_type_normal) is not None)
+        if member_is_struct:
+            member_value = struct_to_json_obj(xml, member_type_normal, member_value)
+
+        new_obj[member_name] = member_value
+
+    if debug:
+        old_members = set(struct_obj.keys())
+        new_members = set(new_obj.keys())
+        missing_members = old_members - new_members
+        if missing_members:
+            lost = ", ".join(map(repr, missing_members))
+            log.error(f"when formatting struct {struct_name!r}, members were lost: {lost}")
+
+    return new_obj
