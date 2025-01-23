@@ -610,9 +610,11 @@ class Registry:
             self.__profiles_schema_files.setdefault(reg_file.name, reg_file)
 
     def iter_files(self) -> Iterator[RegistryFile]:
-        for x in chain(self.__vkxml_files.values(),
-                       self.__profiles_files.values(),
-                       self.__profiles_schema_files.values()):
+        for x in self.__vkxml_files.values():
+            yield x
+        for x in self.__profiles_files.values():
+            yield x.reg_file
+        for x in self.__profiles_schema_files.values():
             yield x
 
     def __iter_glob_files(self, glob: str) -> Iterator[Path]:
