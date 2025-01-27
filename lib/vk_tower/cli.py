@@ -8,8 +8,9 @@ import sys
 import click
 
 from .config import Config
+from . import json
 from .registry import Registry
-from .util import eprint, in_debug_mode, json_pp, parse_env_bool
+from .util import eprint, in_debug_mode, parse_env_bool
 from .registry_xml import RegistryXML
 
 @click.group(
@@ -39,7 +40,7 @@ def cmd_config(format):
     If a config value is a list, then it is sorted in descending priority.
     """
     config = Config()
-    json_pp(config.to_porcelain_json(), format=format)
+    json.pprint(config.to_porcelain_json(), format=format)
 
 @cmd_main.command(
     name = "ls-registry-files",
@@ -86,7 +87,7 @@ def cmd_ls_registry_files(format):
                 path = f["path"]
                 out.write(f"{path}{ors}")
         case "json" | "json5":
-            json_pp(reg_files, format=format)
+            json.pprint(reg_files, format=format)
         case _:
             assert False
 
@@ -138,7 +139,7 @@ def cmd_ls_profiles(format):
                     },
                 })
 
-            json_pp(profiles, format=format)
+            json.pprint(profiles, format=format)
 
         case _:
             assert False
@@ -203,7 +204,7 @@ def cmd_print_profile(name, format, transforms):
     if "normalize-vk-tokens" in transforms:
         profile.file.normalize_vk_names(reg.get_xml())
 
-    json_pp(profile.file.data, format=format)
+    json.pprint(profile.file.data, format=format)
 
 @cmd_main.command(
     name = "get-profile-requirements",
@@ -267,7 +268,7 @@ def cmd_print_profile_requirements(name, format, transforms, recurse):
         eprint(f"profile not found: {name!r}")
         sys.exit(1)
 
-    json_pp(reqs.to_json_obj(), format=format)
+    json.pprint(reqs.to_json_obj(), format=format)
 
 @cmd_main.command(
     name = "debug-dump-parsed-xml",
@@ -278,7 +279,7 @@ def cmd_debug_dump_parsed_xml():
     out = sys.stdout
     config = Config()
     reg = Registry(config)
-    json_pp(reg.get_xml().to_json_obj())
+    json.pprint(reg.get_xml().to_json_obj())
 
 def main():
     cmd_main()

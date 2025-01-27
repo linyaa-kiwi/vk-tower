@@ -15,6 +15,7 @@ from typing import Any, Iterable, Iterator, Optional
 from semver import Version
 
 from .config import Config
+from . import json
 from .registry_xml import (
     RegistryXML,
     normalize_vk_names_deep,
@@ -24,7 +25,7 @@ from .registry_xml import (
     property_struct_sort_key,
     struct_to_json_obj,
 )
-from .util import dig, get_log, in_debug_mode, json_load_path
+from .util import dig, get_log, in_debug_mode
 
 log = get_log()
 debug = in_debug_mode()
@@ -381,7 +382,7 @@ class ProfilesFile:
     @property
     def data(self) -> dict:
         if self.__data is None:
-            self.__data = json_load_path(self.reg_file.path)
+            self.__data = json.load_path(self.reg_file.path)
 
             if not isinstance(self.__data, dict):
                 path = os.fspath(self.reg_file.path)
