@@ -5,10 +5,41 @@ from dataclasses import dataclass
 import json as std_json
 from os import fspath, PathLike
 from pathlib import Path
+from typing import Any
 import sys
 
 # external
 import json5
+
+Scalar = None | int | float | str
+Value = dict[str, 'Value'] | list['Value'] | Scalar
+
+def is_scalar(obj: Any) -> bool:
+    """Is Python object a json scalar value?"""
+    return isinstance(obj, Scalar)
+
+def is_value_shallow(obj: Any) -> bool:
+    """
+    Is Python object a json value?
+
+    This is a shallow test. If the Python object is a collection, it does not test its members.
+    """
+    # `isinstance` does not support parameterized generic types.
+    return isinstance(obj, (dict, list, Scalar))
+
+def is_value_deep(obj: Any) -> bool:
+    """
+    Is Python object a json value?
+
+    This is a deep test. If the Python object is a collection, it recursively tests its members.
+    """
+    if isinstance(obj, dict):
+        return all(isinstance(k, str) and is_value_deep(v)
+                   for k, v in obj.items())
+    elif isinstance(obj, list):
+        return all(is_value_deep(x) for x in obj)
+    else:
+        return is_scalar(obj)
 
 @dataclass
 class JsonFileError(RuntimeError):
