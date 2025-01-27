@@ -13,7 +13,7 @@ import xml.etree.ElementTree as ET
 
 from .util import get_log, in_debug_mode
 
-log = get_log()
+_log = get_log()
 debug = in_debug_mode()
 
 StructName = str
@@ -406,7 +406,7 @@ class RegistryXML:
                 raise XmlError("<type> must have @name", element=struct_elem)
 
             if struct_name in self.struct_info:
-                log.warn(f"XML redefines struct {struct_name!r}")
+                _log.warn(f"XML redefines struct {struct_name!r}")
 
             if struct_elem.get("alias") is not None:
                 continue
@@ -508,7 +508,7 @@ def struct_to_json_obj(xml: RegistryXML, struct_name: str, struct_obj: dict) -> 
 
     struct_info = xml.struct_info.get(struct_name_normal)
     if struct_info is None:
-        log.warn(f"struct_to_json_obj: unknown struct name {struct_name!r}")
+        _log.warn(f"struct_to_json_obj: unknown struct name {struct_name!r}")
         return struct_obj
 
     new_obj = {}
@@ -535,6 +535,6 @@ def struct_to_json_obj(xml: RegistryXML, struct_name: str, struct_obj: dict) -> 
         missing_members = old_members - new_members
         if missing_members:
             lost = ", ".join(map(repr, missing_members))
-            log.error(f"when formatting struct {struct_name!r}, members were lost: {lost}")
+            _log.error(f"when formatting struct {struct_name!r}, members were lost: {lost}")
 
     return new_obj

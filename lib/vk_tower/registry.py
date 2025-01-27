@@ -27,7 +27,7 @@ from .registry_xml import (
 )
 from .util import dig, get_log, in_debug_mode
 
-log = get_log()
+_log = get_log()
 debug = in_debug_mode()
 
 CapName = str
@@ -117,7 +117,7 @@ class CapabilitySet:
     def __merge_extensions(cls, dst, src) -> None:
         for name, src_version in src.items():
             if debug:
-                log.debug(f"merge capability extension {name}")
+                _log.debug(f"merge capability extension {name}")
 
             dst_version = dst.get(name)
 
@@ -135,7 +135,7 @@ class CapabilitySet:
 
             for member_name, src_value in src_struct.items():
                 if debug:
-                    log.debug(f"merge feature {struct_name}.{member_name}")
+                    _log.debug(f"merge feature {struct_name}.{member_name}")
 
                 dst_value = dst_struct.get(member_name, False)
 
@@ -162,7 +162,7 @@ class CapabilitySet:
 
                     for member_name, src_value in src_limits_struct.items():
                         if debug:
-                            log.debug(f"merge property {struct_name}.limits.{member_name}")
+                            _log.debug(f"merge property {struct_name}.limits.{member_name}")
 
                         dst_value = dst_limits_struct.get(member_name)
 
@@ -173,13 +173,13 @@ class CapabilitySet:
                             new_value = limit.merge_values(dst_value, src_value)
 
                         if debug:
-                            log.debug(f"merge property {struct_name}.limits.{member_name}: "
-                                      f"{new_value!r} <- dst={dst_value!r} src={src_value!r}")
+                            _log.debug(f"merge property {struct_name}.limits.{member_name}: "
+                                       f"{new_value!r} <- dst={dst_value!r} src={src_value!r}")
 
                         dst_limits_struct[member_name] = new_value
                 else:
                     if debug:
-                        log.debug(f"merge property {struct_name}.{member_name}")
+                        _log.debug(f"merge property {struct_name}.{member_name}")
 
                     dst_value = dst_struct.get(member_name)
 
@@ -190,8 +190,8 @@ class CapabilitySet:
                         new_value = limit.merge_values(dst_value, src_value)
 
                     if debug:
-                        log.debug(f"merge property {struct_name}.{member_name}: "
-                                  f"{new_value!r} <- dst={dst_value!r} src={src_value!r}")
+                        _log.debug(f"merge property {struct_name}.{member_name}: "
+                                   f"{new_value!r} <- dst={dst_value!r} src={src_value!r}")
 
                     dst_struct[member_name] = new_value
 
@@ -199,16 +199,16 @@ class CapabilitySet:
     def __merge_formats(cls, xml, dst, src) -> None:
         for format_name, src_format_obj in src.items():
             if debug:
-                log.debug(f"merge format {format_name}")
+                _log.debug(f"merge format {format_name}")
 
             dst_format_obj = dst.setdefault(format_name, {})
             for struct_name, src_struct in src_format_obj.items():
                 if struct_name != "VkFormatProperties":
-                    log.error(f"format {format_name!r}: cannot merge unexpected struct {struct_name!r}")
+                    _log.error(f"format {format_name!r}: cannot merge unexpected struct {struct_name!r}")
                     continue
 
                 if debug:
-                    log.debug(f"merge format {format_name}: struct {struct_name}")
+                    _log.debug(f"merge format {format_name}: struct {struct_name}")
 
                 dst_struct = dst_format_obj.setdefault(struct_name, {})
                 for member_name, src_member in src_struct.items():
@@ -292,8 +292,8 @@ class ProfileRequirements:
     def merge_api_version(self, api_version: Version) -> None:
         new_version = max(self.api_version, api_version)
         if debug:
-            log.debug(f"merge api version: "
-                      f"{new_version} <- dst={self.api_version} src={api_version}")
+            _log.debug(f"merge api version: "
+                       f"{new_version} <- dst={self.api_version} src={api_version}")
         self.api_version = new_version
 
     def merge_profiles(self, profiles: Iterable[ProfileName]) -> None:
@@ -495,8 +495,8 @@ class ProfilesFile:
                             xml, self.data["capabilities"][cap])
                 elif isinstance(cap, list):
                     cap_choice = ", ".join(map(repr, cap))
-                    log.warn(f"profile {profile_name!r}: "
-                             f"ignoring capability choice: {cap_choice}")
+                    _log.warn(f"profile {profile_name!r}: "
+                              f"ignoring capability choice: {cap_choice}")
                 else:
                     path = os.fspath(self.file.reg_file.path)
                     msg = f"invalid data in profiles file: {path!r}"
